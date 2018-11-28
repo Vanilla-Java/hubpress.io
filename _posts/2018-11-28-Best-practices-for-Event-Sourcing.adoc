@@ -1,0 +1,117 @@
+= Best practices for Event Sourcing
+Peter Lawrey
+:hp-tags: Best Practices, Event Sourcing
+
+David Schmitz presented https://www.youtube.com/watch?v=GzrZworHpIk[an excellent talk] on what he sees as best practices in using https://martinfowler.com/eaaDev/EventSourcing.html[Event Sourcing].  
+
+https://chronicle.software/[Chronicle Software] has two very different event sourcing frameworks https://chronicle.software/solutions/framework/[Chronicle Microservices Framework] (CMF) and https://github.com/OpenHFT/Chronicle-Decentred[Chronicle Decentred]. This talk is useful in highlighting how they differ with each other and other Event Sourcing solutions.
+
+CMF is built on Chronicle Queue and is designed for low latency trading systems. Replication is typically asynchronous to minimise latency.
+
+Chronicle Decentred is a framework for building a secure decentralised ledger e.g. a Blockchain. It focuses on high throughput rather than low latency and Byzantine Fault Tolerance.
+
+David's talk applies to all Event Driven systems, and up to 10 minutes into the talk it applies to Chronicle's frameworks as well.
+
+=== Re-Deliveries
+
+He notes that ensuring exactly one delivery is hard. 
+
+CMF approach is to assume every input of significance will have an output onto a known queue. This allows the service to restart immediately after the last successfully published message. The benefit of this approach is that:
+
+- if the input message is delivered but the service dies before completion, it is reprocessed.
+- if the input message is processed but the output message is not written successfully, it assumes it should be reprocessed until it does.
+- it is assumed that any input message which has no output, has no side effects and can be replayed, or if it cannot, a dummy "success" message can be produced.
+
+Chronicle Decentred is checkpointed on a regular basis, e.g. weekly. The state of any individual service can be recovered from this point by replaying all the events.
+
+In both cases, events are not deleted by default and cannot be removed individually (without encryption, see below). The events are stored in files on a rolling basis and are removed when the file(s) are deleted.
+
+=== Commands vs Queries
+
+CMF and Decentred are designed to execute commands in real time. To support queries you either need to maintain a "live" query you know in advance or for ad hoc queries, maintain an external database of your choice.
+
+=== Performance
+
+This is one of the ways in which CMF and Decentred differ greatly.
+
+In his talk, David gives an example of a service which performs 100 actions in 66 ms. This is an average latency of 0.66 ms.
+
+CMF is designed for consistently low latency where the focus is on the worst latencies the system sees.  A key measure is often the 99.9%ile latency (worst 1 in 1,000) rather than the average or typical latencies.
+
+We recently helped a Tier 1 banking client build an Order Management System with 3 microservices where the _wire to wire_ latency was under _20 micro-seconds 99.9% of the time_ for a throughput of 20,000 messages per second.
+
+Chronicle Decentred is designed for high throughput. Each chain can process a large number of messages across a cluster of servers e.g. 50K/s to 400K/s depending on the hardware. However, the latency is the time to achieve a consensus, which might be 5 ms to 500 ms depending on the network between them.
+
+=== Human-readable formats
+
+To support schema changes, David proposes a https://en.wikipedia.org/wiki/Human-readable_medium[human-readable format] which makes translating different versions of https://en.wikipedia.org/wiki/Data_transfer_object[Data Transfer Objects] easier as your data model changes. https://www.json.org/[JSON] is a common choice for doing this, however, I find that is not as human-readable as http://yaml.org/[YAML].
+
+One downside of human-readable formats is that they are not as fast as binary formats, and for this reason, CMF and Decentred supports both a binary format of YAML, which can be automatically translated to YAML but is 2-3 times faster, and as lower level binary formats which are faster but not as easy to maintain.
+
+Some advantages of YAML over JSON
+
+- more concise.
+- better support for complex data types.
+- direct support for types and comments.
+
+Downside of YAML
+
+- more options for how to write the data.
+- human readability is in the eye of the beholder, making it harder to code.
+- a simpler spec with mroe consistent support across languages.
+- YAML is almost a super set of JSON but not exactlty. e.g after an attribute name you need colon-space in YAML where as a space is not required for JSON.
+
+.JSON Example from the talk
+[source, json]
+----
+{
+    "eventType": "MoneyTransfered",
+    "aggredateId" : "1234",
+    "iban": "DE12",
+    "accountNumber": "12312312",
+    "amount": 10,
+    "currency": "EUR"
+}
+----
+
+.YAML Example based on the previous example.
+[source, yaml]
+----
+!MoneyTransfered: {
+    aggredateId : 1234,
+    iban: DE12,
+    accountNumber: 12312312,
+    amount: 10,
+    currency: EUR
+}
+----
+
+Having a variety of serialization options available, we favour starting with the easiest to work with and optimise later once we have a working system. This allows us to identify the most performance sensitive messages which require optimisation e.g. orders and market data, and leave most messages including the more complex, but less latency sensitive messages easier to maintain e.g. static data and configuration.
+
+=== Year End Procedure
+
+David discusses http://www.learnac.co.uk/index.php/blog/30-year-end-accounting-procedures[Year End Procedure]. In trading systems, this is usually performed daily or weekly. This can be achieved by taking a snapshot in the form of events to load at the start of the new time period. Most trading systems have a long downtime window overnight or on the weekend.
+
+=== Updating events
+
+Event-driven systems are not designed to edit an event once written. Either the event fails, in which case, a new correct event can be added, or the event is successful but incorrect, and one or more events need to be added to correct or reverse the action. There is no easy way to edit an event before it processed, by design.
+
+It is fairly common to have a priority queue for control events, and this could be used to inject delete, cancel or correction events as long as the event modified hasn't been processed yet.
+
+Great care must be taken to avoid or manage any event which could be executed but cannot be reversed later.
+
+=== GDPR and encrypting data.
+
+One way to delete data without destroying the whole queue or stream is to encrypt all the data using a key relating to a user with a user-specific key. To "delete" the user you just need to delete the key.  Chronicle Queue has support for a plugin to encrypt and decrypt messages as they are written and read which can be integrated with your key management.
+
+Another approach is to anonymize the data so there is nothing the stream which identifies a user, rather this is handled by other systems.
+
+=== Trying out these solutions.
+
+Chronicle Microservices Framework is a commercial solution for which you can get an evaluation copy, you can also start by using https://github.com/OpenHFT/Chronicle-Queue[Chronicle Queue]
+
+https://github.com/OpenHFT/Chronicle-Decentred[Chronicle Decentred] is an opensource projects with some example projects available on github.
+
+
+
+
