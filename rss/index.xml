@@ -1,4 +1,182 @@
-<?xml version="1.0" encoding="UTF-8"?><rss xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:atom="http://www.w3.org/2005/Atom" version="2.0"><channel><title><![CDATA[Vanilla Java]]></title><description><![CDATA[Vanilla Java]]></description><link>https://vanilla-java.github.io</link><image><url>https://raw.githubusercontent.com/Vanilla-Java/vanilla-java.github.io/master/images/French-Vanilla-Java.jpg</url><title>Vanilla Java</title><link>https://vanilla-java.github.io</link></image><generator>RSS for Node</generator><lastBuildDate>Tue, 04 Sep 2018 16:17:25 GMT</lastBuildDate><atom:link href="https://vanilla-java.github.io/rss/" rel="self" type="application/rss+xml"/><ttl>60</ttl><item><title><![CDATA[Some Java oddities]]></title><description><![CDATA[<div id="preamble">
+<?xml version="1.0" encoding="UTF-8"?><rss xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:atom="http://www.w3.org/2005/Atom" version="2.0"><channel><title><![CDATA[Vanilla Java]]></title><description><![CDATA[Vanilla Java]]></description><link>https://vanilla-java.github.io</link><image><url>https://raw.githubusercontent.com/Vanilla-Java/vanilla-java.github.io/master/images/French-Vanilla-Java.jpg</url><title>Vanilla Java</title><link>https://vanilla-java.github.io</link></image><generator>RSS for Node</generator><lastBuildDate>Wed, 28 Nov 2018 15:25:30 GMT</lastBuildDate><atom:link href="https://vanilla-java.github.io/rss/" rel="self" type="application/rss+xml"/><ttl>60</ttl><item><title><![CDATA[Best practices for Event Sourcing]]></title><description><![CDATA[<div id="preamble">
+<div class="sectionbody">
+<div class="paragraph">
+<p>David Schmitz presented <a href="https://www.youtube.com/watch?v=GzrZworHpIk">an excellent talk</a> on what he sees as best practices in using <a href="https://martinfowler.com/eaaDev/EventSourcing.html">Event Sourcing</a>.</p>
+</div>
+<div class="paragraph">
+<p><a href="https://chronicle.software/">Chronicle Software</a> has two very different event sourcing frameworks <a href="https://chronicle.software/solutions/framework/">Chronicle Microservices Framework</a> (CMF) and <a href="https://github.com/OpenHFT/Chronicle-Decentred">Chronicle Decentred</a>. This talk is useful in highlighting how they differ with each other and other Event Sourcing solutions.</p>
+</div>
+<div class="paragraph">
+<p>CMF is built on Chronicle Queue and is designed for low latency trading systems. Replication is typically asynchronous to minimise latency.</p>
+</div>
+<div class="paragraph">
+<p>Chronicle Decentred is a framework for building a secure decentralised ledger e.g. a Blockchain. It focuses on high throughput rather than low latency and Byzantine Fault Tolerance.</p>
+</div>
+<div class="paragraph">
+<p>David&#8217;s talk applies to all Event Driven systems, and up to 10 minutes into the talk it applies to Chronicle&#8217;s frameworks as well.</p>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_re_deliveries">Re-Deliveries</h3>
+<div class="paragraph">
+<p>He notes that ensuring exactly one delivery is hard.</p>
+</div>
+<div class="paragraph">
+<p>CMF approach is to assume every input of significance will have an output onto a known queue. This allows the service to restart immediately after the last successfully published message. The benefit of this approach is that:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>if the input message is delivered but the service dies before completion, it is reprocessed.</p>
+</li>
+<li>
+<p>if the input message is processed but the output message is not written successfully, it assumes it should be reprocessed until it does.</p>
+</li>
+<li>
+<p>it is assumed that any input message which has no output, has no side effects and can be replayed, or if it cannot, a dummy "success" message can be produced.</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p>Chronicle Decentred is checkpointed on a regular basis, e.g. weekly. The state of any individual service can be recovered from this point by replaying all the events.</p>
+</div>
+<div class="paragraph">
+<p>In both cases, events are not deleted by default and cannot be removed individually (without encryption, see below). The events are stored in files on a rolling basis and are removed when the file(s) are deleted.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_commands_vs_queries">Commands vs Queries</h3>
+<div class="paragraph">
+<p>CMF and Decentred are designed to execute commands in real time. To support queries you either need to maintain a "live" query you know in advance or for ad hoc queries, maintain an external database of your choice.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_performance">Performance</h3>
+<div class="paragraph">
+<p>This is one of the ways in which CMF and Decentred differ greatly.</p>
+</div>
+<div class="paragraph">
+<p>In his talk, David gives an example of a service which performs 100 actions in 66 ms. This is an average latency of 0.66 ms.</p>
+</div>
+<div class="paragraph">
+<p>CMF is designed for consistently low latency where the focus is on the worst latencies the system sees.  A key measure is often the 99.9%ile latency (worst 1 in 1,000) rather than the average or typical latencies.</p>
+</div>
+<div class="paragraph">
+<p>We recently helped a Tier 1 banking client build an Order Management System with 3 microservices where the <em>wire to wire</em> latency was under <em>20 micro-seconds 99.9% of the time</em> for a throughput of 20,000 messages per second.</p>
+</div>
+<div class="paragraph">
+<p>Chronicle Decentred is designed for high throughput. Each chain can process a large number of messages across a cluster of servers e.g. 50K/s to 400K/s depending on the hardware. However, the latency is the time to achieve a consensus, which might be 5 ms to 500 ms depending on the network between them.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_human_readable_formats">Human-readable formats</h3>
+<div class="paragraph">
+<p>To support schema changes, David proposes a <a href="https://en.wikipedia.org/wiki/Human-readable_medium">human-readable format</a> which makes translating different versions of <a href="https://en.wikipedia.org/wiki/Data_transfer_object">Data Transfer Objects</a> easier as your data model changes. <a href="https://www.json.org/">JSON</a> is a common choice for doing this, however, I find that is not as human-readable as <a href="http://yaml.org/">YAML</a>.</p>
+</div>
+<div class="paragraph">
+<p>One downside of human-readable formats is that they are not as fast as binary formats, and for this reason, CMF and Decentred supports both a binary format of YAML, which can be automatically translated to YAML but is 2-3 times faster, and as lower level binary formats which are faster but not as easy to maintain.</p>
+</div>
+<div class="paragraph">
+<p>Some advantages of YAML over JSON</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>more concise.</p>
+</li>
+<li>
+<p>better support for complex data types.</p>
+</li>
+<li>
+<p>direct support for types and comments.</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p>Downside of YAML</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>more options for how to write the data.</p>
+</li>
+<li>
+<p>human readability is in the eye of the beholder, making it harder to code.</p>
+</li>
+<li>
+<p>a simpler spec with mroe consistent support across languages.</p>
+</li>
+<li>
+<p>YAML is almost a super set of JSON but not exactlty. e.g after an attribute name you need colon-space in YAML where as a space is not required for JSON.</p>
+</li>
+</ul>
+</div>
+<div class="listingblock">
+<div class="title">JSON Example from the talk</div>
+<div class="content">
+<pre class="highlight"><code class="language-json" data-lang="json">{
+    "eventType": "MoneyTransfered",
+    "aggredateId" : "1234",
+    "iban": "DE12",
+    "accountNumber": "12312312",
+    "amount": 10,
+    "currency": "EUR"
+}</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="title">YAML Example based on the previous example.</div>
+<div class="content">
+<pre class="highlight"><code class="language-yaml" data-lang="yaml">!MoneyTransfered: {
+    aggredateId : 1234,
+    iban: DE12,
+    accountNumber: 12312312,
+    amount: 10,
+    currency: EUR
+}</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Having a variety of serialization options available, we favour starting with the easiest to work with and optimise later once we have a working system. This allows us to identify the most performance sensitive messages which require optimisation e.g. orders and market data, and leave most messages including the more complex, but less latency sensitive messages easier to maintain e.g. static data and configuration.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_year_end_procedure">Year End Procedure</h3>
+<div class="paragraph">
+<p>David discusses <a href="http://www.learnac.co.uk/index.php/blog/30-year-end-accounting-procedures">Year End Procedure</a>. In trading systems, this is usually performed daily or weekly. This can be achieved by taking a snapshot in the form of events to load at the start of the new time period. Most trading systems have a long downtime window overnight or on the weekend.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_updating_events">Updating events</h3>
+<div class="paragraph">
+<p>Event-driven systems are not designed to edit an event once written. Either the event fails, in which case, a new correct event can be added, or the event is successful but incorrect, and one or more events need to be added to correct or reverse the action. There is no easy way to edit an event before it processed, by design.</p>
+</div>
+<div class="paragraph">
+<p>It is fairly common to have a priority queue for control events, and this could be used to inject delete, cancel or correction events as long as the event modified hasn&#8217;t been processed yet.</p>
+</div>
+<div class="paragraph">
+<p>Great care must be taken to avoid or manage any event which could be executed but cannot be reversed later.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_gdpr_and_encrypting_data">GDPR and encrypting data.</h3>
+<div class="paragraph">
+<p>One way to delete data without destroying the whole queue or stream is to encrypt all the data using a key relating to a user with a user-specific key. To "delete" the user you just need to delete the key.  Chronicle Queue has support for a plugin to encrypt and decrypt messages as they are written and read which can be integrated with your key management.</p>
+</div>
+<div class="paragraph">
+<p>Another approach is to anonymize the data so there is nothing the stream which identifies a user, rather this is handled by other systems.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_trying_out_these_solutions">Trying out these solutions.</h3>
+<div class="paragraph">
+<p>Chronicle Microservices Framework is a commercial solution for which you can get an evaluation copy, you can also start by using <a href="https://github.com/OpenHFT/Chronicle-Queue">Chronicle Queue</a></p>
+</div>
+<div class="paragraph">
+<p><a href="https://github.com/OpenHFT/Chronicle-Decentred">Chronicle Decentred</a> is an opensource projects with some example projects available on github.</p>
+</div>
+</div>]]></description><link>https://vanilla-java.github.io/2018/11/28/Best-practices-for-Event-Sourcing.html</link><guid isPermaLink="true">https://vanilla-java.github.io/2018/11/28/Best-practices-for-Event-Sourcing.html</guid><category><![CDATA[Best Practices]]></category><category><![CDATA[Event Sourcing]]></category><dc:creator><![CDATA[Peter K Lawrey]]></dc:creator><pubDate>Wed, 28 Nov 2018 00:00:00 GMT</pubDate></item><item><title><![CDATA[Some Java oddities]]></title><description><![CDATA[<div id="preamble">
 <div class="sectionbody">
 <div class="paragraph">
 <p>I was recently asked for some simple pieces of code which some unusual uses of Java.</p>
